@@ -6,31 +6,26 @@
 #define MEM_SIZE 100
 #define MAX_LINE_LENGTH 256
 
-// Definición de tipos para la Tabla de Símbolos
-// type: 'l' = número de línea, 'v' = variable, 'c' = constante
+// Nodo para la tabla de simbolos (guarda variables, constantes y numeros de linea)
 typedef struct TableEntry {
-    int symbol;             // Número de línea, valor de constante o código ASCII de la variable (ej. 'x')
-    char type;              // 'l', 'v', 'c'
-    int location;           // Posición de memoria en SML (00 a 99)
-    struct TableEntry* next;
+    int symbol;             // El numero, valor o letra de la variable
+    char type;              // 'l' = linea, 'v' = variable, 'c' = constante
+    int location;           // Posicion en la memoria SML (00 al 99)
+    struct TableEntry* next;// Apuntador al siguiente nodo
 } TableEntry;
 
-// Estructura global para la Tabla de Símbolos
 TableEntry* symbolTable = NULL;
 
-// Memoria SML e Índice de instrucciones generadas (Instruction Counter)
 int smlMemory[MEM_SIZE];
 int instructionCounter = 0;
 
-// Arreglo de banderas para referencias no resueltas (inicializado en -1)
+// Arreglo para guardar los saltos que faltan por resolver
 int flags[MEM_SIZE];
 
-// Puntero para la asignación de variables/constantes desde el final de la memoria hacia atrás (comienza en 99)
+// Empieza a asignar memoria desde el final hacia atras (99, 98, 97...)
 int variableMemoryCounter = MEM_SIZE - 1;
 
-// --- FUNCIONES DE LA TABLA DE SÍMBOLOS ---
-
-// Buscar un símbolo en la tabla
+// Busca si un simbolo ya esta guardado en la tabla
 TableEntry* searchSymbol(int symbol, char type) {
     TableEntry* current = symbolTable;
     while (current != NULL) {
@@ -42,7 +37,7 @@ TableEntry* searchSymbol(int symbol, char type) {
     return NULL;
 }
 
-// Insertar un símbolo en la tabla
+// Inserta un nuevo simbolo al inicio de la lista
 void insertSymbol(int symbol, char type, int location) {
     TableEntry* newNode = (TableEntry*)malloc(sizeof(TableEntry));
     newNode->symbol = symbol;
@@ -52,17 +47,17 @@ void insertSymbol(int symbol, char type, int location) {
     symbolTable = newNode;
 }
 
-// Obtener o asignar ubicación de memoria para variables o constantes
+// Revisa si ya existe la variable/constante, si no, le asigna su celda atras
 int getOrInsertDataLocation(int val, char type) {
     TableEntry* existing = searchSymbol(val, type);
     if (existing != NULL) {
         return existing->location;
     }
-    // Si no existe, se asigna desde el final de la memoria hacia atrás (99, 98, 97...)
+    
     int loc = variableMemoryCounter--;
     insertSymbol(val, type, loc);
     
-    // NUEVO: Guardar el valor real en la memoria SML si es una constante
+    // Si es una constante, la guardamos de una vez en la memoria SML
     if (type == 'c') {
         smlMemory[loc] = val;
     }
@@ -70,100 +65,89 @@ int getOrInsertDataLocation(int val, char type) {
     return loc;
 }
 
-
-// --- PRIMERA PASADA ---
+// PRIMERA PASADA: Lee el codigo y genera las instrucciones basicas
 void primeraPasada(FILE* inputFile) {
     char line[MAX_LINE_LENGTH];
 
-    // Inicializar memoria SML y banderas en -1
+    // Limpiamos memoria y flags
     for (int i = 0; i < MEM_SIZE; i++) {
         smlMemory[i] = 0;
         flags[i] = -1;
     }
 
+    // Leemos el archivo linea por linea
     while (fgets(line, sizeof(line), inputFile) != NULL) {
-        // Remover salto de línea final si existe
         line[strcspn(line, "\r\n")] = 0;
         if (strlen(line) == 0) continue;
 
-        // Tokenizar la línea usando espacios
         char* token = strtok(line, " ");
         if (token == NULL) continue;
 
-        // 1. El primer token siempre es el número de línea del programa Simple
+        // 1. Guardamos el numero de linea de Simple
         int lineNumber = atoi(token);
         insertSymbol(lineNumber, 'l', instructionCounter);
 
-        // 2. Siguiente token: el comando (rem, input, print, goto, if, let, end)
+        // 2. Leemos el comando (input, print, let, goto, if, end)
         char* command = strtok(NULL, " ");
         if (command == NULL) continue;
 
         if (strcmp(command, "rem") == 0) {
-            // Los comentarios se ignoran, no generan SML ni incrementan IC
-            continue;
+            continue; // Ignoramos comentarios
         }
         else if (strcmp(command, "input") == 0) {
             char* var = strtok(NULL, " ");
             int varLoc = getOrInsertDataLocation(var[0], 'v');
             
-            // Generar instrucción SML: 10 (READ) + ubicación
-            smlMemory[instructionCounter] = 1000 + varLoc;
+            smlMemory[instructionCounter] = 1000 + varLoc; // 10 es READ
             instructionCounter++;
         }
         else if (strcmp(command, "print") == 0) {
             char* var = strtok(NULL, " ");
             int varLoc = getOrInsertDataLocation(var[0], 'v');
             
-            // Generar instrucción SML: 11 (WRITE) + ubicación
-            smlMemory[instructionCounter] = 1100 + varLoc;
+            smlMemory[instructionCounter] = 1100 + varLoc; // 11 es WRITE
             instructionCounter++;
         }
         else if (strcmp(command, "goto") == 0) {
             char* targetLineStr = strtok(NULL, " ");
             int targetLine = atoi(targetLineStr);
 
-            // Buscar si la línea destino ya fue procesada (hacia atrás) o registrar referencia adelantada
             TableEntry* targetEntry = searchSymbol(targetLine, 'l');
             if (targetEntry != NULL) {
-                smlMemory[instructionCounter] = 4000 + targetEntry->location; // BRANCH incondicional
+                smlMemory[instructionCounter] = 4000 + targetEntry->location; // Salto incondicional
             } else {
-                // Referencia adelantada: dejamos en 00 el operando y guardamos la línea destino en flags
-                smlMemory[instructionCounter] = 4000; 
+                smlMemory[instructionCounter] = 4000; // Se queda en 00 y guardamos pendiente
                 flags[instructionCounter] = targetLine;
             }
             instructionCounter++;
         }
         else if (strcmp(command, "if") == 0) {
-            // Ejemplo: if y == x goto 60
             char* var1 = strtok(NULL, " ");
-            char* op = strtok(NULL, " "); // ==, <, >, etc.
+            char* op = strtok(NULL, " ");
             char* var2 = strtok(NULL, " ");
-            strtok(NULL, " "); // saltar "goto"
+            strtok(NULL, " "); // saltamos "goto"
             char* targetLineStr = strtok(NULL, " ");
             int targetLine = atoi(targetLineStr);
 
             int loc1 = getOrInsertDataLocation(var1[0], 'v');
             int loc2 = getOrInsertDataLocation(var2[0], 'v');
 
-            // 1. Cargar var1
-            smlMemory[instructionCounter++] = 2000 + loc1;
-            // 2. Restar var2
-            smlMemory[instructionCounter++] = 3100 + loc2;
+            // Restamos para comparar si son iguales
+            smlMemory[instructionCounter++] = 2000 + loc1; // LOAD
+            smlMemory[instructionCounter++] = 3100 + loc2; // SUBTRACT
 
-            // 3. Evaluar salto condicional (si es igual, la resta da cero -> Branch Zero 42)
             TableEntry* targetEntry = searchSymbol(targetLine, 'l');
             if (targetEntry != NULL) {
-                smlMemory[instructionCounter] = 4200 + targetEntry->location;
+                smlMemory[instructionCounter] = 4200 + targetEntry->location; // Branch zero
             } else {
-                smlMemory[instructionCounter] = 4200; // Operando temporal 00
-                flags[instructionCounter] = targetLine; // Referencia adelantada
+                smlMemory[instructionCounter] = 4200; 
+                flags[instructionCounter] = targetLine; 
             }
             instructionCounter++;
         }
         else if (strcmp(command, "let") == 0) {
-            // Ejemplo simplificado para asignaciones directas o expresiones básicas (let y = y + 1)
             char* varDest = strtok(NULL, " ");
-            strtok(NULL, " "); // saltar "="
+            strtok(NULL, " "); // saltamos "="
             char* op1 = strtok(NULL, " ");
             char* operador = strtok(NULL, " ");
             char* op2 = strtok(NULL, " ");
@@ -171,15 +155,15 @@ void primeraPasada(FILE* inputFile) {
             int destLoc = getOrInsertDataLocation(varDest[0], 'v');
 
             if (operador == NULL) {
-                // Asignación simple: let x = 5 o let x = y
+                // Asignacion simple (ej. x = 5)
                 int sourceVal = isdigit(op1[0]) ? atoi(op1) : op1[0];
                 char sourceType = isdigit(op1[0]) ? 'c' : 'v';
                 int sourceLoc = getOrInsertDataLocation(sourceVal, sourceType);
 
-                smlMemory[instructionCounter++] = 2000 + sourceLoc; // LOAD
-                smlMemory[instructionCounter++] = 2100 + destLoc;   // STORE
+                smlMemory[instructionCounter++] = 2000 + sourceLoc;
+                smlMemory[instructionCounter++] = 2100 + destLoc;
             } else {
-                // Operación aritmética básica (ej: y + 1)
+                // Operacion con dos numeros o variables (ej. x + y)
                 int val1 = isdigit(op1[0]) ? atoi(op1) : op1[0];
                 char type1 = isdigit(op1[0]) ? 'c' : 'v';
                 int loc1 = getOrInsertDataLocation(val1, type1);
@@ -188,80 +172,100 @@ void primeraPasada(FILE* inputFile) {
                 char type2 = isdigit(op2[0]) ? 'c' : 'v';
                 int loc2 = getOrInsertDataLocation(val2, type2);
 
-                smlMemory[instructionCounter++] = 2000 + loc1; // LOAD operando 1
+                smlMemory[instructionCounter++] = 2000 + loc1;
 
                 if (strcmp(operador, "+") == 0) {
-                    smlMemory[instructionCounter++] = 3000 + loc2; // ADD
+                    smlMemory[instructionCounter++] = 3000 + loc2;
                 } else if (strcmp(operador, "-") == 0) {
-                    smlMemory[instructionCounter++] = 3100 + loc2; // SUBTRACT
+                    smlMemory[instructionCounter++] = 3100 + loc2;
                 } else if (strcmp(operador, "*") == 0) {
-                    smlMemory[instructionCounter++] = 3300 + loc2; // MULTIPLY
+                    smlMemory[instructionCounter++] = 3300 + loc2;
                 } else if (strcmp(operador, "/") == 0) {
-                    smlMemory[instructionCounter++] = 3200 + loc2; // DIVIDE
+                    smlMemory[instructionCounter++] = 3200 + loc2;
                 }
 
-                smlMemory[instructionCounter++] = 2100 + destLoc; // STORE resultado
+                smlMemory[instructionCounter++] = 2100 + destLoc;
             }
         }
         else if (strcmp(command, "end") == 0) {
-            // Generar instrucción SML: 43 (HALT)
-            smlMemory[instructionCounter] = 4300;
+            smlMemory[instructionCounter] = 4300; // 43 es HALT
             instructionCounter++;
         }
     }
 }
 
-
-// --- SEGUNDA PASADA ---
-void segundaPasada(const char* outputFilename) {
-    // 1. Recorrer el arreglo flags buscando referencias no resueltas (!= -1)
+// SEGUNDA PASADA: Resuelve saltos y guarda el archivo dentro de la carpeta sml/
+void segundaPasada(const char* inputFilename) {
+    // Buscamos si quedaron saltos pendientes y los rellenamos
     for (int i = 0; i < MEM_SIZE; i++) {
         if (flags[i] != -1) {
             int targetLineNumber = flags[i];
             
-            // 2. Buscar en la tabla de símbolos la ubicación SML correspondiente a ese número de línea
             TableEntry* entry = searchSymbol(targetLineNumber, 'l');
             if (entry != NULL) {
-                // 3. Insertar la posición de memoria (location) en el operando de la instrucción incompleta
-                int baseOpCode = smlMemory[i] / 100; // Extraer código de operación (ej: 40 o 42)
+                int baseOpCode = smlMemory[i] / 100; 
                 smlMemory[i] = (baseOpCode * 100) + entry->location;
             } else {
-                printf("Error: Referencia a la línea no existente %d\n", targetLineNumber);
+                printf("Error: la linea %d no existe.\n", targetLineNumber);
             }
         }
     }
 
-    // 4. Guardar el código SML resultante en un archivo de disco (una instrucción por línea)
+    // Extraemos solo el nombre del archivo sin la ruta previa (ej. programa1.simple)
+    const char *filename = strrchr(inputFilename, '/');
+    if (filename == NULL) filename = strrchr(inputFilename, '\\');
+    if (filename == NULL) {
+        filename = inputFilename;
+    } else {
+        filename++; // Saltamos el slash para quedarnos solo con el nombre
+    }
+
+    // Construimos la ruta de salida apuntando a la carpeta sml/
+    char outputFilename[256];
+    snprintf(outputFilename, sizeof(outputFilename), "sml/%s", filename);
+
+    // Cambiamos automaticamente la extension .simple por .sml
+    char *dot = strrchr(outputFilename, '.');
+    if (dot != NULL) {
+        strcpy(dot, ".sml");
+    } else {
+        strcat(outputFilename, ".sml");
+    }
+
+    // Guardamos todo en el archivo de salida dentro de la carpeta sml/
     FILE* outFile = fopen(outputFilename, "w");
     if (outFile == NULL) {
-        printf("No se pudo crear el archivo de salida SML.\n");
+        printf("Error: No se pudo crear el archivo en la carpeta 'sml/'. Asegurate de que la carpeta exista.\n");
         return;
     }
 
-    // NUEVO: Cambiar instructionCounter por MEM_SIZE para imprimir las 100 palabras
     for (int i = 0; i < MEM_SIZE; i++) {
         fprintf(outFile, "%+05d\n", smlMemory[i]);
     }
 
     fclose(outFile);
-    printf("\n*** Compilación exitosa. Código SML guardado en '%s' ***\n", outputFilename);
+    printf("\n*** Compilacion lista. Archivo SML generado: '%s' ***\n", outputFilename);
 }
 
-
-// --- FUNCIÓN PRINCIPAL ---
-int main(void) {
-    FILE* file = fopen("programa1.simple", "r");
-    if (file == NULL) {
-        printf("Error al abrir el archivo fuente programa1.simple\n");
+// FUNCION PRINCIPAL: Recibe cualquier archivo por argumentos
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Uso correcto: %s <ruta_o_nombre_archivo.simple>\n", argv[0]);
         return 1;
     }
 
-    printf("Iniciando Primera Pasada...\n");
+    FILE* file = fopen(argv[1], "r");
+    if (file == NULL) {
+        printf("Error: No se pudo abrir el archivo '%s'\n", argv[1]);
+        return 1;
+    }
+
+    printf("-> Ejecutando primera pasada para: %s\n", argv[1]);
     primeraPasada(file);
     fclose(file);
 
-    printf("Iniciando Segunda Pasada y resolución de referencias...\n");
-    segundaPasada("programa1.sml");
+    printf("-> Ejecutando segunda pasada...\n");
+    segundaPasada(argv[1]);
 
     return 0;
 }

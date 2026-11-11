@@ -15,12 +15,15 @@ El proyecto está diseñado bajo lenguaje C, separando la lógica del simulador 
 * `src/compilador/compilador.c`: Traductor de Simple a SML. Realiza la lectura del código fuente, construye la tabla de símbolos y resuelve referencias adelantadas (goto/if).
 * `programa1.simple`: Código de prueba escrito en alto nivel.
 
-## Instrucciones de Compilación
-Para compilar los módulos del proyecto, utiliza el compilador `gcc` desde la terminal:
+## Instrucciones para poder convertir cualquier .simple a .sml
+Primero se usa este codigo
+gcc src/compilador/compilador.c -o compilador p
 
-```bash
-# Compilar el simulador Simpletron
-gcc src/simpletron/simpletron.c -o simpletron
+Después este, cambia NOMBRE_DEL_ARCHIVO por el nombre de tu .simple
+.\compilador.exe NOMBRE_DEL_ARCHIVO.simple
 
-# Compilar el Traductor/Compilador de Simple
-gcc src/compilador/compilador.c -o compilador
+Después se ejecuta este código
+gcc src/simpletron/simpletron.c -o simpletron -lm
+
+Después se hace lo mismo para poder usar el simpletron
+.\simpletron.exe NOMBRE_DEL_ARCHIVO.sml

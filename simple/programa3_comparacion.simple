@@ -1,0 +1,7 @@
+10 input x
+20 input y
+30 if x == y goto 60
+40 print x
+50 goto 70
+60 print y
+70 end
