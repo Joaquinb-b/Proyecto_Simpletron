@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h> // Necesario para system("pause")
+#include <math.h>   // Necesario para la exponenciacion (pow)
 
 // Definimos el tamano de la memoria y el numero centinela para parar la carga
 #define MEM_SIZE 100
@@ -25,11 +26,15 @@
 #define BRANCHZERO  42
 #define HALT        43
 
+// Mejoras Simpletron
+#define REMAINDER    34
+#define EXPONENTIATE 35
+
 // Prototipo de la funcion para imprimir el vaciado de memoria y registros
 void dump(int accumulator, int instructionCounter, int instructionRegister, 
           int operationCode, int operand, int memory[]);
 
-int main(void) {
+int main(int argc, char *argv[]) {
     // Arreglo para simular la memoria de 100 palabras, inicializado todo en 0
     int memory[MEM_SIZE];
     int i;
@@ -52,10 +57,17 @@ int main(void) {
     printf("*** Bienvenido a Simpletron! ***\n");
     printf("*** Cargando programa automaticamente desde archivo SML ***\n\n");
 
+    //Validar argumentos de entrada
+    if (argc != 2) {
+        printf("*** Uso: %s <archivo_programa.sml> ***\n", argv[0]);
+        system("pause");
+        return 1;
+    }
+
     // FASE 1: CARGA DEL PROGRAMA DESDE EL ARCHIVO SML EN DISCO
-    FILE *archivoSml = fopen("programa1.sml", "r");
+    FILE *archivoSml = fopen(argv[1], "r"); //Usa el argumento en lugar del nombre fijo
     if (archivoSml == NULL) {
-        printf("*** Error: No se pudo abrir el archivo programa1.sml ***\n");
+        printf("*** Error: No se pudo abrir el archivo %s ***\n", argv[1]);
         system("pause");
         return 1;
     }
@@ -220,6 +232,31 @@ int main(void) {
                 printf("\n*** Termino la ejecucion de Simpletron ***\n");
                 corriendo = 0;
                 break;
+
+            // Operacion REMAINDER: Obtiene el residuo (modulo) de la division
+            case REMAINDER:
+                if (memory[operand] == 0) {
+                    printf("\n*** Intento de modulo entre cero ***\n");
+                    printf("*** La ejecucion de Simpletron termino anormalmente ***\n");
+                    corriendo = 0;
+                } else {
+                    accumulator = accumulator % memory[operand];
+                }
+                break;
+
+            // Operacion EXPONENTIATE: Eleva el acumulador a la potencia del valor en memoria
+            case EXPONENTIATE: {
+                // Usamos round() para evitar problemas de precision con pow()
+                long long resultadoExp = round(pow(accumulator, memory[operand]));
+                if (resultadoExp < -9999 || resultadoExp > 9999) {
+                    printf("\n*** Desbordamiento del acumulador en exponenciacion ***\n");
+                    printf("*** La ejecucion de Simpletron termino anormalmente ***\n");
+                    corriendo = 0;
+                } else {
+                    accumulator = (int)resultadoExp;
+                }
+                break;
+            }
 
             // Si el codigo no coincide con ninguna de las 12 operaciones validas
             default:
