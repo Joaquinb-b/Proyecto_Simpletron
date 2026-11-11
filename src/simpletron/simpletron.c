@@ -29,6 +29,8 @@
 // Mejoras Simpletron
 #define REMAINDER    34
 #define EXPONENTIATE 35
+#define NEWLINE      36 // Imprime un salto de linea en la consola
+#define PRINTS       37 // Imprime una cadena (caracteres ASCII) desde memoria
 
 // Prototipo de la funcion para imprimir el vaciado de memoria y registros
 void dump(int accumulator, int instructionCounter, int instructionRegister, 
@@ -255,6 +257,24 @@ int main(int argc, char *argv[]) {
                 } else {
                     accumulator = (int)resultadoExp;
                 }
+                break;
+            }
+
+            // Operacion NEWLINE: Imprime un salto de linea (no usa el operando)
+            case NEWLINE:
+                printf("\n");
+                break;
+
+            // Operacion PRINTS: Imprime caracteres ASCII desde la memoria hasta encontrar un 0
+            case PRINTS: {
+                int ptr = operand;
+                // Mientras no nos salgamos de la memoria y el valor no sea 0
+                while (ptr < MEM_SIZE && memory[ptr] != 0) {
+                    // Imprimimos el valor como caracter (char)
+                    printf("%c", (char)memory[ptr]);
+                    ptr = ptr + 1;
+                }
+                printf("\n");
                 break;
             }
 
