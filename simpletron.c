@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h> // Necesario para system("pause")
 
 // Definimos el tamano de la memoria y el numero centinela para parar la carga
 #define MEM_SIZE 100
@@ -49,42 +50,28 @@ int main(void) {
 
     // Imprimimos el mensaje de bienvenida tal como pide el manual
     printf("*** Bienvenido a Simpletron! ***\n");
-    printf("*** Introduzca su programa una instruccion ***\n");
-    printf("*** (o palabra de datos) a la vez en la linea ***\n");
-    printf("*** de texto de entrada. Yo indicare el numero ***\n");
-    printf("*** de posicion y una interrogacion (?). Usted ***\n");
-    printf("*** tecleara entonces la palabra para esa ***\n");
-    printf("*** posicion. Teclee el centinela 9999 para ***\n");
-    printf("*** dejar de introducir su programa. ***\n\n");
+    printf("*** Cargando programa automaticamente desde archivo SML ***\n\n");
 
-    // FASE 1: CARGA DEL PROGRAMA EN LA MEMORIA
-    
-    int entrada = 0;
+    // FASE 1: CARGA DEL PROGRAMA DESDE EL ARCHIVO SML EN DISCO
+    FILE *archivoSml = fopen("programa1.sml", "r");
+    if (archivoSml == NULL) {
+        printf("*** Error: No se pudo abrir el archivo programa1.sml ***\n");
+        system("pause");
+        return 1;
+    }
+
     int posicionCarga = 0;
+    int instruccionLeida = 0;
 
-    while (posicionCarga < MEM_SIZE) {
-        // Mostramos el numero de posicion con dos digitos y el signo de interrogacion
-        printf("%02d ? ", posicionCarga);
-        scanf("%d", &entrada);
-
-        // Si el usuario introduce 9999, terminamos la carga de instrucciones
-        if (entrada == SENTINEL) {
-            break;
-        }
-
-        // Validamos que el numero este dentro del rango permitido (-9999 a 9998)
-        if (entrada < -9999 || entrada > 9998) {
-            printf("*** Instruccion fuera de rango (-9999 a +9998). Intente de nuevo. ***\n");
-            // Usamos continue para que no avance de posicion y vuelva a pedir el valor
-            continue; 
-        }
-
-        // Si es valido, guardamos la instruccion en la memoria y pasamos a la siguiente posicion
-        memory[posicionCarga] = entrada;
+    // Leemos el archivo SML instrucción por instrucción
+    while (fscanf(archivoSml, "%d", &instruccionLeida) == 1 && posicionCarga < MEM_SIZE) {
+        memory[posicionCarga] = instruccionLeida;
         posicionCarga = posicionCarga + 1;
     }
 
-    printf("\n*** Se termino de cargar el programa ***\n");
+    fclose(archivoSml);
+
+    printf("*** Se termino de cargar el programa ***\n");
     printf("*** Comienza la ejecucion del programa ***\n\n");
 
     // FASE 2: CICLO DE EJECUCION (FETCH, DECODE, EXECUTE)
@@ -123,11 +110,13 @@ int main(void) {
             case READ: {
                 int valorLeido = 0;
                 printf("? ");
+                fflush(stdout); // Fuerza a mostrar el prompt inmediatamente en la consola
                 scanf("%d", &valorLeido);
                 
                 // Verificamos que el valor ingresado este entre -9999 y +9999
                 while (valorLeido < -9999 || valorLeido > 9999) {
                     printf("*** Valor fuera de rango (-9999 a 9999). Intente de nuevo.\n? ");
+                    fflush(stdout);
                     scanf("%d", &valorLeido);
                 }
                 
@@ -250,6 +239,9 @@ int main(void) {
 
     // Se ejecuta siempre al final, ya sea por terminacion normal o error fatal
     dump(accumulator, instructionCounter, instructionRegister, operationCode, operand, memory);
+
+    // Pausa para evitar que la consola se cierre de golpe en Visual Studio
+    system("pause");
 
     return 0;
 }
